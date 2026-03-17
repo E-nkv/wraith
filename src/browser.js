@@ -1,4 +1,3 @@
-// @ts-nocheck
 export function initWSA() {
     console.log("initWSA script is running inside the browser!")
 
@@ -14,12 +13,10 @@ export function initWSA() {
     rec.interimResults = true
     rec.lang = "en-US"
 
-    window.transcript = "" // Initialize the variable
+    window.transcript = ""
+    window.isIntentionalStop = true // Start in a paused state
 
-    // Add lifecycle logs so we can see exactly what the mic is doing
-    rec.onstart = () => console.log("Microphone is HOT! Waiting for audio...")
-    rec.onaudiostart = () => console.log("Audio pipeline connected.")
-    rec.onspeechstart = () => console.log("Human speech detected!")
+    rec.onstart = () => console.log("Listening for audio...")
 
     rec.onresult = (event) => {
         let currentInterim = ""
@@ -33,17 +30,16 @@ export function initWSA() {
             }
         }
 
-        // Append finalized text to our global buffer
         if (currentFinal) {
             window.transcript += currentFinal
         }
+
         if (window.onSpeechUpdate) {
             window.onSpeechUpdate({
                 totalText: window.transcript,
                 interimResults: currentInterim,
             })
         }
-        //console.log(`[STT] Interim: "${currentInterim}" | Final Buffer: "${window.transcript}"`)
     }
 
     rec.onerror = (event) => {
@@ -51,11 +47,39 @@ export function initWSA() {
     }
 
     rec.onend = () => {
-        console.log("Recognition ended. Restarting...")
-        try {
-            rec.start()
-        } catch (e) {
-            console.error("Failed to restart:", e)
+        // If WSA dropped the mic due to silence, but the user didn't hit /stop, restart it!
+        if (!window.isIntentionalStop) {
+            console.log("Recognition ended unexpectedly (silence timeout). Restarting...")
+            try {
+                rec.start()
+            } catch (e) {
+                console.error("Failed to restart:", e)
+            }
+        } else {
+            console.log("Recognition stopped intentionally.")
         }
+    }
+
+    // Attach to window so startListening/stopListening can access it
+    window.recognition = rec
+}
+
+// These functions will be evaluated by Puppeteer when the Express routes are hit
+export function startListening() {
+    window.isIntentionalStop = false
+    try {
+        window.recognition.start()
+    } catch (e) {
+        console.log("err starting WSA: ", err)
+    }
+}
+
+export function stopListening() {
+    window.isIntentionalStop = true
+    try {
+        window.recognition.stop()
+        window.transcript = ""
+    } catch (e) {
+        console.log("err closing WSA: ", err)
     }
 }
