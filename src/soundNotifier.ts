@@ -1,6 +1,5 @@
 import { spawn } from "child_process"
-import { dirname, join } from "path"
-import { access, constants } from "fs/promises"
+import { join } from "path"
 
 // Get the sounds directory
 function getSoundsDir(): string {
@@ -17,13 +16,11 @@ function getSoundsDir(): string {
 }
 
 const SOUNDS = {
-    START: join(getSoundsDir(), "dialog-warning.oga"),
-    DAEMON_START: join(getSoundsDir(), "message-new-instant.oga"),
-    STOP: join(getSoundsDir(), "message.oga"),
-    ERROR: join(getSoundsDir(), "message.oga"),
+    START: join(getSoundsDir(), "start.oga"),
+    STOP: join(getSoundsDir(), "stop.oga"),
+    ERROR: join(getSoundsDir(), "stop.oga"),
 }
 
-// Log sound paths for debugging
 console.log("[SoundNotifier] Sounds directory:", getSoundsDir())
 
 /**
@@ -44,10 +41,6 @@ export class SoundNotifier {
         proc.on("error", (err) => {
             console.error("[SoundNotifier] paplay error:", err)
         })
-    }
-
-    async notifyDaemonStart() {
-        this.notify(SOUNDS.DAEMON_START)
     }
 
     async notifyMicStart() {

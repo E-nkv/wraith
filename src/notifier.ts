@@ -14,13 +14,6 @@ export default class Notifier {
         this.soundNotifier = new SoundNotifier(opts.soundsNotifsEnabled ?? true)
     }
 
-    // --- Specialized Notifiers ---
-
-    async notifyDaemonStart(hotkey: string = "F9") {
-        await this.textNotifier.notifyDaemonStart(hotkey)
-        this.soundNotifier.notifyDaemonStart()
-    }
-
     async notifyMicStart() {
         await this.textNotifier.notifyMicStart()
         this.soundNotifier.notifyMicStart()

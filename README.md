@@ -19,9 +19,9 @@ A Linux first system-wide dictation tool to transcribe Speech To Text (STT) with
 Voice Type requires the following system dependencies:
 
 - **dotool** - Wayland-compatible virtual keyboard input
-- **libnotify** - Desktop notifications
-- **pulseaudio-utils** - Sound playback (paplay) for feedback
 - **Google Chrome** - For the Web Speech API (most accurate and fast)
+- **libnotify** - Desktop notifications. You probably already have it.
+- **pulseaudio-utils** - Sound playback (paplay) for feedback. You probably already have it.
 
 > Since you already are a Linux user, I'm sure you will be able to install the required system dependencies yourself. Just ask your favorite AI how to install each library, considering your distro and your desktop environment (gnome, kde, etc).
 
