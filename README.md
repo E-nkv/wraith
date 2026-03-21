@@ -1,6 +1,6 @@
 # WRAITH
 
-Real-time speech-to-text dictation for Linux Wayland. Type into any application using your voice.
+Real-time speech-to-text dictation for Linux. Type into any application using your voice.
 
 ## Features
 
@@ -11,65 +11,72 @@ Real-time speech-to-text dictation for Linux Wayland. Type into any application 
 - **Zero Latency**: Browser runs persistently in the background - no startup delay when you press the hotkey.
 - **No API Keys**: Uses Chrome's built-in Web Speech API - no paid services or local AI models needed.
 
-## Quick Start
+## Installation
 
-### 1. Install Dependencies
-
-```bash
-# Arch Linux
-sudo pacman -S --needed dotool libnotify paplay google-chrome
-```
+### Quick Install (with system dependencies)
 
 ```bash
-# Ubuntu/Debian
-sudo apt install dotool libnotify-bin pulseaudio-utils google-chrome-stable
+curl -fhsSL https://github.com/E-nkv/wraith/releases/latest/download/install-sysdeps.sh | bash
+curl -fhsSL https://github.com/E-nkv/wraith/releases/latest/download/install.sh | bash
 ```
 
+### Manual Install
+
+If you prefer to install system dependencies yourself, or if the automated sysdeps script has issues on your system:
+
+1. Install system dependencies manually:
+   - **Arch Linux**: `yay -S dotool google-chrome` (plus `libnotify` and `paplay` from official repos)
+   - **Debian/Ubuntu**: `sudo apt install dotool libnotify-bin pulseaudio-utils google-chrome-stable`
+   - **Fedora**: `sudo dnf install dotool libnotify pulseaudio-utils google-chrome-stable`
+
+2. Install WRAITH:
 ```bash
-# Fedora
-sudo dnf install dotool libnotify pulseaudio-utils google-chrome-stable
+curl -fhsSL https://github.com/E-nkv/wraith/releases/latest/download/install.sh | bash
 ```
 
-### 2. Clone and Install
+### System Dependencies
 
-```bash
-git clone https://github.com/E-nkv/wraith.git
-cd wraith
-bun install
-```
+WRAITH requires the following:
+- **dotool** - Wayland-compatible virtual keyboard input
+- **libnotify** - Desktop notifications
+- **pulseaudio-utils** - Sound playback (paplay) for feedback
+- **Google Chrome** - For the Web Speech API (most accurate and fast)
 
-### 3. Set Up Keyboard Shortcuts
+## Keyboard Shortcuts
+
+### GNOME
 
 Open GNOME Settings → Keyboard → Custom Shortcuts, then add:
 
 **Start Dictation (F9):**
 
-- Name: Wraith Start
+- Name: WRAITH Start
 - Command: `curl http://127.0.0.1:3232/start`
 - Shortcut: F9
 
 **Stop Dictation (F10):**
 
-- Name: Wraith Stop
+- Name: WRAITH Stop
 - Command: `curl http://127.0.0.1:3232/stop`
 - Shortcut: F10
 
-### 4. Run
+### Other Desktop Environments
 
-```bash
-bun run .
-```
+Non-GNOME shortcut configuration documentation is coming soon. For now, manually bind F9 to `curl http://127.0.0.1:3232/start` and F10 to `curl http://127.0.0.1:3232/stop`.
 
-You'll see a notification when the daemon is ready. Press F9 to start dictating, F10 to stop.
+## Usage
+
+1. Run `wraith` to start the daemon
+2. Press F9 to start dictating
+3. Speak into your microphone
+4. Press F10 to stop
 
 ## How It Works
 
 1. Press F9 to start listening
 2. Speak into your microphone
 3. Text appears in real-time in your focused window
-4. Press F10 to stop
-
-The daemon runs in the background and handles all the transcription, diffing, and text injection automatically.
+4. Press F10 to stop listening
 
 ## Technology
 
@@ -83,10 +90,5 @@ The daemon runs in the background and handles all the transcription, diffing, an
 ## Requirements
 
 - Linux with Wayland (GNOME recommended)
-- Google Chrome Stable
-- Bun runtime
+- Google Chrome Stable (Its Web Speech Api is by far the most superior, in accuracy and speed)
 - Microphone
-
-## License
-
-Version 1.0.0

@@ -1,26 +1,30 @@
 import { spawn } from "child_process"
 import { dirname, join } from "path"
+import { access, constants } from "fs/promises"
 
-// Get the directory where the executable is located.
-//This works both in development (bun run .) and production (compiled binary)
-function getExecutableDir(): string {
+// Get the sounds directory
+function getSoundsDir(): string {
     const execPath = process.execPath
-    const execDir = dirname(execPath)
     const isDevMode = execPath.endsWith("bun") || execPath.endsWith("node")
 
     if (isDevMode) {
-        return process.cwd()
+        // In development, use local assets
+        return join(process.cwd(), "assets/sounds")
     }
 
-    return execDir
+    // In production, use system-wide assets
+    return "/usr/local/share/wraith/sounds"
 }
 
 const SOUNDS = {
-    START: join(getExecutableDir(), "assets/sounds/dialog-warning.oga"),
-    DAEMON_START: join(getExecutableDir(), "assets/sounds/message-new-instant.oga"),
-    STOP: join(getExecutableDir(), "assets/sounds/message.oga"),
-    ERROR: join(getExecutableDir(), "assets/sounds/message.oga"),
+    START: join(getSoundsDir(), "dialog-warning.oga"),
+    DAEMON_START: join(getSoundsDir(), "message-new-instant.oga"),
+    STOP: join(getSoundsDir(), "message.oga"),
+    ERROR: join(getSoundsDir(), "message.oga"),
 }
+
+// Log sound paths for debugging
+console.log("[SoundNotifier] Sounds directory:", getSoundsDir())
 
 /**
  * Handles sound notifications via paplay
@@ -34,27 +38,31 @@ export class SoundNotifier {
 
     private notify(audioPath: string) {
         if (!this.enabled || !audioPath) return
-        // Use non-blocking spawn
-        spawn("paplay", [audioPath])
+
+        const proc = spawn("paplay", [audioPath])
+
+        proc.on("error", (err) => {
+            console.error("[SoundNotifier] paplay error:", err)
+        })
     }
 
-    notifyDaemonStart() {
+    async notifyDaemonStart() {
         this.notify(SOUNDS.DAEMON_START)
     }
 
-    notifyMicStart() {
+    async notifyMicStart() {
         this.notify(SOUNDS.START)
     }
 
-    notifyMicStop() {
+    async notifyMicStop() {
         this.notify(SOUNDS.STOP)
     }
 
-    notifyOffline() {
+    async notifyOffline() {
         this.notify(SOUNDS.ERROR)
     }
 
-    notifyError() {
+    async notifyError() {
         this.notify(SOUNDS.ERROR)
     }
 }

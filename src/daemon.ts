@@ -138,12 +138,12 @@ export default class Daemon {
     //start spawns browser and server listener
     public async start(port: number) {
         try {
-            await this.initBrowser()
             this.app.listen(port, "127.0.0.1", () => {
                 log(`SERVER STARTED ON PORT: ${port}`)
                 // Notify that the daemon is ready for user's hotkey
                 this.notifier.notifyDaemonStart("F9")
             })
+            await this.initBrowser()
         } catch (e) {
             this.notifier.notifyError("Failed to initialize Wraith daemon.")
             log(`Startup error: ${e}`)
