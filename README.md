@@ -15,7 +15,7 @@ A Linux first system-wide dictation tool to transcribe Speech To Text (STT) with
 ## Installation and setup
 
 ```bash
-curl -fhsSL https://github.com/E-nkv/wraith/releases/download/latest/install.sh | bash
+curl -fsSL https://github.com/E-nkv/wraith/releases/latest/download/install.sh | bash
 ```
 
 This will install wraith and automatically attempt to install any missing system dependencies. If the automated dependency installation fails on your system, you can install them manually:

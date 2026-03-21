@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-sysdeps.sh - WRAITH system dependencies installation script
+# install.sh - wraith installation script
 
 set -e
 
@@ -9,7 +9,59 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Installing WRAITH system dependencies${NC}"
+echo -e "${GREEN}Installing wraith Speech-to-Text Daemon${NC}"
+
+# Download latest binary
+echo -e "${GREEN}Downloading wraith binary...${NC}"
+LATEST_URL="https://github.com/E-nkv/wraith/releases/latest/download/wraith-linux-x64"
+curl -L -o /tmp/wraith "$LATEST_URL"
+chmod +x /tmp/wraith
+
+# Download assets (sounds)
+echo -e "${GREEN}Downloading sound assets...${NC}"
+ASSETS_DIR="/usr/local/share/wraith"
+sudo mkdir -p "$ASSETS_DIR/sounds"
+curl -L -o /tmp/sounds.tar.gz "https://github.com/E-nkv/wraith/releases/latest/download/sounds.tar.gz"
+sudo tar -xzf /tmp/sounds.tar.gz -C "$ASSETS_DIR/sounds"
+
+# Install binary
+echo -e "${GREEN}Installing binary to /usr/local/bin...${NC}"
+sudo mv /tmp/wraith /usr/local/bin/wraith
+
+echo -e "${GREEN}wraith binary and assets installed!${NC}"
+
+# Check for system dependencies
+MISSING_DEPS=()
+
+if ! command -v dotool >/dev/null 2>&1; then
+    MISSING_DEPS+=("dotool")
+fi
+
+if ! command -v notify-send >/dev/null 2>&1; then
+    MISSING_DEPS+=("libnotify")
+fi
+
+if ! command -v paplay >/dev/null 2>&1; then
+    MISSING_DEPS+=("pulseaudio-utils")
+fi
+
+if ! command -v google-chrome >/dev/null 2>&1 && ! command -v google-chrome-stable >/dev/null 2>&1; then
+    MISSING_DEPS+=("Google Chrome")
+fi
+
+if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
+    echo -e "${GREEN}All system dependencies are already installed!${NC}"
+    echo -e "${GREEN}Installation complete!${NC}"
+    exit 0
+fi
+
+echo ""
+echo -e "${YELLOW}The following system dependencies are missing:${NC}"
+for dep in "${MISSING_DEPS[@]}"; do
+    echo "  - $dep"
+done
+echo ""
+echo -e "${GREEN}Attempting to install missing dependencies...${NC}"
 
 # Detect distribution
 if [ -f /etc/arch-release ]; then
@@ -24,7 +76,6 @@ else
 fi
 
 # Install system dependencies
-echo -e "${GREEN}Installing system dependencies...${NC}"
 case $DISTRO in
     "arch")
         # Check for AUR helper
@@ -35,7 +86,7 @@ case $DISTRO in
         else
             echo -e "${RED}Error: No AUR helper found (yay or paru).${NC}"
             echo ""
-            echo -e "${YELLOW}WRAITH requires dotool and google-chrome from the AUR.${NC}"
+            echo -e "${YELLOW}wraith requires dotool and google-chrome from the AUR.${NC}"
             echo ""
             echo "Please install an AUR helper first:"
             echo ""
@@ -94,3 +145,4 @@ case $DISTRO in
 esac
 
 echo -e "${GREEN}System dependencies installation complete!${NC}"
+echo -e "${GREEN}Installation complete!${NC}"
