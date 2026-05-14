@@ -10,9 +10,10 @@ const options = {
         default: false,
         short: "s",
     },
-    "no-text": {
+    text: {
         type: "boolean",
         default: false,
+        short: "t",
     },
     lang: {
         type: "string",
@@ -48,7 +49,7 @@ Options:
   -l, --lang <lang>       Set Web Speech API language (e.g., en-US, es-ES). Default: en-US
   -b, --browser <browser> Set browser type (chrome, chromium). Default: chrome
   -p, --browser_path <path> Set custom path to browser executable
-  --no-text                Disable text notifications (default: false)
+  --text                   Enable text notifications (default: false)
   --sound                  Enable sound notifications (default: false)
   -d, --detached           Run the daemon in the background (detached mode)
   -h, --help               Show this help message
@@ -113,7 +114,7 @@ export function parseFlags(args: string[]): CliFlags {
         lang: lang as WSALanguage,
         browserType: values.browser_type as BrowserType,
         browserPath: values.browser_path,
-        textNotifs: !values["no-text"],
+        textNotifs: values["text"],
         soundNotifs: values["sound"],
         detached: values.detached,
         help: values.help,

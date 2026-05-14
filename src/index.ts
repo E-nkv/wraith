@@ -29,7 +29,9 @@ async function destroyDaemon() {
 process.on("SIGTERM", destroyDaemon)
 process.on("SIGINT", destroyDaemon)
 
-process.env.BROWSER_PATH = parsedFlags.browserPath
+if (parsedFlags.browserPath) {
+    process.env.BROWSER_PATH = parsedFlags.browserPath
+}
 process.env.BROWSER_TYPE = parsedFlags.browserType
 
 daemon.start(PORT).catch(console.error)
