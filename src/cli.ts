@@ -19,10 +19,9 @@ const options = {
         default: "en-US",
         short: "l",
     },
-    browser: {
+    browser_type: {
         type: "string",
         default: "chrome",
-        short: "b",
     },
     browser_path: {
         type: "string",
@@ -105,14 +104,14 @@ export function parseFlags(args: string[]): CliFlags {
         process.exit(1)
     }
 
-    if (values.browser != "chrome" && values.browser != "chromium") {
-        console.error(`Error: Invalid Browser '${values.browser}'`)
+    if (values.browser_type != "chrome" && values.browser_type != "chromium") {
+        console.error(`Error: Invalid browser_type '${values.browser_type}'`)
         console.error(`Supported Browsers: "chrome", "chromium"`)
         process.exit(1)
     }
     return {
         lang: lang as WSALanguage,
-        browser: values.browser as BrowserType,
+        browserType: values.browser_type as BrowserType,
         browserPath: values.browser_path,
         textNotifs: !values["no-text"],
         soundNotifs: values["sound"],
