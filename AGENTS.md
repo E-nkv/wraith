@@ -2,15 +2,9 @@
 
 Guidance for AI agents and contributors working in this repository.
 
-## Documentation map
+# NOTE FROM THE USER
 
-| File | Audience | Contents |
-|---|---|---|
-| [README.md](README.md) | End users | Install, usage, hotkeys, troubleshooting |
-| [INTERNALS.md](INTERNALS.md) | Curious users / deep dive | How Voice Type works under the hood |
-| **AGENTS.md** (this file) | Agents & contributors | Architecture, conventions, APIs, agent rules |
-
----
+If you see something like 'output in response', 'output response', 'response output', 'oir', 'o i r', or any similar combination in the prompt, it means I want the output to be directly in the response, and not creating any file.
 
 ## Project overview
 
@@ -19,7 +13,7 @@ Voice Type is a system-wide speech-to-text daemon for Linux. It runs Chrome or C
 **Runtime flow:**
 
 1. Daemon binds HTTP on `127.0.0.1:3232` and launches a persistent headless browser
-2. `browser.js` initializes WSA; Node exposes `onSpeechUpdate` / `onBrowserRecStop` via Puppeteer
+2. `browser.js` initializes WSA; Node exposes `onSpeechEvent` / `onBrowserRecStop` via Puppeteer
 3. Hotkey hits `/toggle` (or `/start` / `/stop`) to begin or end listening
 4. Transcripts → `TypingController` diff → `dotool` keystrokes
 5. Optional D-Bus / `paplay` notifications
@@ -33,11 +27,11 @@ Hotkey → curl :3232/toggle[?language=xx] → Daemon
               ↓
         browser.setLangAndStart(lang)  (mutates rec.lang then start())
               ↓
-Microphone → Web Speech API → onSpeechUpdate({ text })
+Microphone → Web Speech API → onSpeechEvent({ kind, text? })
               ↓
-transformIfEnabled (spoken punctuation + capitalization, --punctuation only)
+TranscriptTransformerSession (spoken punctuation + capitalization for en-*; noop otherwise)
               ↓
-TypingController (diff) → dotool → focused application
+TypingController (prefix diff) → dotool → focused application
               ↓
 Notifier → D-Bus / paplay (if enabled)
 ```
@@ -97,7 +91,12 @@ voice-type/
 │   ├── browser.js         # WSA wrapper (Chrome context) — must remain .js
 │   ├── browserLauncher.ts # puppeteer-core launch + detectBrowser()
 │   ├── language.ts        # Shared isValidLanguage, readLanguageQuery, DEFAULT_LANGUAGE
-│   ├── transcriptTransformer.ts # Spoken punctuation + capitalization (--punctuation)
+│   ├── transcriptTransformers/ # Language-specific spoken punctuation (en-* always on)
+│   │   ├── index.ts       # createTranscriptTransformerSession factory
+│   │   ├── types.ts       # TranscriptTransformerSession interface
+│   │   ├── noop.ts        # passthrough session
+│   │   ├── en.ts          # English rules (wired for en-*)
+│   │   └── es.ts          # Spanish stub (not wired yet)
 │   ├── typingController.ts
 │   ├── notifier.ts, textNotifier.ts, soundNotifier.ts
 │   └── utils.ts, types.ts, constants.ts
@@ -153,7 +152,6 @@ Parsed in [`src/cli.ts`](src/cli.ts) via `node:util.parseArgs` (strict).
 | `--browser_type` | `chrome` | `chrome` or `chromium` → sets `BROWSER_TYPE` env |
 | `-p, --browser_path` | — | Custom executable → `BROWSER_PATH` env |
 | `--timeout` | `0` | Seconds of silence before auto-stop; **only when streaming** (`timeout > 0` resets on each speech update) |
-| `--punctuation` | off | Spoken punctuation ("comma", "period", "question mark", "exclamation mark", "semicolon", "colon") → symbols; auto-capitalize sentence starts. Applied to the transcript **before** diffing (see `transcriptTransformer.ts`) |
 | `--no-stream` | off | Final transcripts only (no interim diffs) |
 | `--text` | off | D-Bus desktop notifications |
 | `-s, --sound` | off | `paplay` feedback |
@@ -177,33 +175,39 @@ Browser paths checked by launcher: `/usr/bin/google-chrome`, `/usr/bin/chromium`
 - Express routes (see HTTP API); `browserHealthMiddleware` before transcribe routes
 - `initBrowser()` → launch, new page, `exposeFunction` for speech callbacks, `browser.initWSA(stream, defaultLanguage)`
 - `resolveAndValidateLanguage(req, res)` — reads `?language=` / `?lang=`, validates against `WSA_LANGUAGES`, returns the resolved string or `null` after sending `400` + `notifyError`. Used by `/start` and `/toggle`.
-- `startTranscription(lang, res)` — passes `lang` to `browser.setLangAndStart` so the in-page `rec.lang` is mutated and recognition begins in the requested language
+- `startTranscription(lang, res)` — creates a `TranscriptTransformerSession` for `lang`, passes `lang` to `browser.setLangAndStart`
 - `stopTranscription(reason)` — reasons: `intentional`, `silence`, `offline`
 - `handleBrowserRecStop` — auto-stops if WSA ends while still listening
-- `silenceTimer` — daemon-side timeout when `stream && timeout > 0`; reset on each `handleSpeechUpdate`
-- `transformIfEnabled(rawText)` — with `--punctuation`, runs `transformTranscript` on the full transcript before diffing and manages sentence-start state: `capitalizeNext` is set on `startTranscription` and recomputed only at segment finalization (empty interim update) from `lastTransformedText`, so a gap after a sentence end capitalizes the next segment while a mid-sentence gap does not
+- `handleSpeechEvent(event)` — routes `text` events through the transformer session then `typingController.applyLiveText()`; `segment-finalized` calls `onSegmentFinalized()`, `finalizeSegment()`, then `sendKeyChord()` for committed key commands
+- `silenceTimer` — daemon-side timeout when `stream && timeout > 0`; reset on each `text` event
 - `isPortInUse()` — prevents duplicate daemon instances
-- State: `isWSAListening`, `stopCooldown`, `typingController.hasStopped`, `defaultLanguage` (startup default only), `capitalizeNext` + `lastTransformedText` (`--punctuation` only)
+- State: `isWSAListening`, `stopCooldown`, `typingController.hasStopped`, `defaultLanguage`, `transcriptTransformer` (per dictation session)
 
 ### Browser/WSA: [`src/browser.js`](src/browser.js)
 
 - `initWSA(stream, lang)` — `continuous: true`; `interimResults` only if `stream`
-- `onresult` → `onSpeechUpdate({ text })` with interim or accumulated final text
+- `onresult` → `onSpeechEvent({ kind: "text", text })` and/or `{ kind: "segment-finalized" }` (both stream and non-stream emit `segment-finalized` when a segment commits)
 - `onend` → `onBrowserRecStop({ reason: offline \| silence })`
 - `onerror` — `network` sets offline flag; other errors throw
 - Exported: `startListening`, `stopRecognition`, `setLangAndStart(lang)`, `healthCheck`
 
 ### TypingController: [`src/typingController.ts`](src/typingController.ts)
 
-- Persistent `dotool` child; `hasStopped` blocks `applyDiff` after manual stop
-- **DiffEnum:** `NoChange`, `ChangeRes` (backspace + type), `ChangeResAndClear` (empty transcript → reset)
+- Persistent `dotool` child; `hasStopped` blocks typing after manual stop
+- `applyLiveText(currText)` — prefix diff: backspace changed suffix, type new suffix
+- `finalizeSegment()` — clears transient `prevText` at segment boundary (no keystrokes)
+- `sendKeyChord(chord)` — dotool `key` action for standalone key commands committed at segment finalization
+- `typeText("\n")` — newline in transformed text becomes `key enter` in the dotool script
 - Unicode via GNOME hex entry; ASCII buffered as `type ...`
 
-### Transcript transformer: [`src/transcriptTransformer.ts`](src/transcriptTransformer.ts)
+### Transcript transformers: [`src/transcriptTransformers/`](src/transcriptTransformers/)
 
-- Pure functions, no state: `transformTranscript` (spoken-word punctuation rules + in-string capitalization after `.?!`), `capitalizeFirst`, `endsSentence`
-- Word-boundary, case-insensitive rules — "commander"/"periodic" stay literal; no escape mechanism for literal "comma" etc. (off = literal typing)
-- Always applied to the **whole** transcript per update so `prevText`/`currText` diff in the same transformed space; segment-boundary capitalization state lives in `Daemon`, not here
+- `TranscriptTransformerSession` — `transform(rawText)`, `onSegmentFinalized(): TranscriptCommand[]`, `reset()`
+- `TranscriptCommand` — `{ kind: "key"; chord: DotoolKeyChord }` for committed standalone commands
+- `createTranscriptTransformerSession(lang, streamEnabled)` — `en-*` → English session (always on); otherwise no-op. Inline newline and `control enter` disabled when `streamEnabled === false`.
+- English (`en.ts`): case-insensitive spoken-word punctuation + `double quote`/`double quotes`; inline `new line` / `newline` → `\n`; standalone `control enter` → `ctrl+enter` committed on segment finalization; capitalization state in session
+- Spanish (`es.ts`): stub only, not wired into the factory yet
+- Word-boundary, case-insensitive rules — "commander"/"periodic" stay literal; no escape mechanism for literal "comma" etc.
 
 ### Browser launcher: [`src/browserLauncher.ts`](src/browserLauncher.ts)
 
@@ -225,7 +229,9 @@ Browser paths checked by launcher: `/usr/bin/google-chrome`, `/usr/bin/chromium`
 ## Types ([`src/types.ts`](src/types.ts))
 
 ```typescript
-enum DiffEnum { NoChange, ChangeRes, ChangeResAndClear }
+type SpeechEvent =
+    | { kind: "text"; text: string }
+    | { kind: "segment-finalized" }
 
 interface CliFlags {
     lang: WSALanguage
@@ -235,21 +241,12 @@ interface CliFlags {
     browserType: BrowserType
     browserPath?: string
     timeout: number
-    punctuation: boolean
     detached: boolean
     help: boolean
 }
 ```
 
 `WSA_LANGUAGES` — 41 BCP47 tags in [`src/constants.ts`](src/constants.ts).
-
-Per-request language is shared between CLI and HTTP via [`src/language.ts`](src/language.ts):
-
-```typescript
-const DEFAULT_LANGUAGE = "en-US"
-function isValidLanguage(lang: unknown): lang is string
-function readLanguageQuery(query: Record<string, unknown>): string | undefined
-```
 
 Per-request language is shared between CLI and HTTP via [`src/language.ts`](src/language.ts):
 
@@ -270,7 +267,8 @@ function readLanguageQuery(query: Record<string, unknown>): string | undefined
 | Non-dotool input | Replace `TypingController` (high effort) |
 | Alternate STT | Replace `browser.js` + launch config (high effort) |
 | Per-request language validation/resolution | [`src/language.ts`](src/language.ts) |
-| New spoken-punctuation rule | `PUNCTUATION_RULES` in [`src/transcriptTransformer.ts`](src/transcriptTransformer.ts) |
+| New spoken-punctuation rule (English) | `COMMAND_DEFS` in [`src/transcriptTransformers/en.ts`](src/transcriptTransformers/en.ts) |
+| New language transformer | Add `src/transcriptTransformers/<lang>.ts` and register in [`index.ts`](src/transcriptTransformers/index.ts) |
 
 ---
 

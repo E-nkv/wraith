@@ -22,15 +22,38 @@ export function initWSA(stream, lang) {
     let finalText = ""
     rec.onresult = (event) => {
         let interimText = ""
+        let finalizedText = ""
+        let segmentFinalized = false
         for (let i = event.resultIndex; i < event.results.length; i++) {
             if (!event.results[i].isFinal) {
                 interimText += event.results[i][0].transcript
             } else {
-                finalText += event.results[i][0].transcript
+                const chunk = event.results[i][0].transcript
+                finalText += chunk
+                finalizedText += chunk
+                segmentFinalized = true
             }
         }
-        const resultText = stream ? interimText : finalText
-        window.onSpeechUpdate({ text: resultText })
+        if (stream) {
+            if (segmentFinalized) {
+                // Final results are not in interimText; emit them before finalization
+                // so inline transforms (e.g. "new line") apply on the committed chunk.
+                if (finalizedText) {
+                    window.onSpeechEvent({ kind: "text", text: finalizedText })
+                }
+                window.onSpeechEvent({ kind: "segment-finalized" })
+            }
+            if (interimText) {
+                window.onSpeechEvent({ kind: "text", text: interimText })
+            }
+        } else {
+            if (segmentFinalized) {
+                if (finalizedText) {
+                    window.onSpeechEvent({ kind: "text", text: finalizedText })
+                }
+                window.onSpeechEvent({ kind: "segment-finalized" })
+            }
+        }
     }
 
     //onerror happens always before onend.

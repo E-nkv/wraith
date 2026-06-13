@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
+import type { DotoolKeyChord } from "./transcriptTransformers/types.js"
 import { log } from "./utils.js"
-import { DiffEnum } from "./types.js"
 
 export default class TypingController {
     private prevText: string = ""
@@ -41,7 +41,17 @@ export default class TypingController {
         this.dotool.stdin.write(cmdString)
     }
 
+    public sendKeyChord(chord: DotoolKeyChord) {
+        if (this.hasStopped) return
+        if (!this.dotool.stdin.writable) {
+            log("dotool stdin not writable")
+            return
+        }
+        this.dotool.stdin.write(`key ${chord}\n`)
+    }
+
     public typeText(text: string) {
+        if (this.hasStopped) return
         if (!text) return
         if (!this.dotool.stdin.writable) {
             log("dotool stdin not writable")
@@ -97,44 +107,25 @@ export default class TypingController {
         this.dotool.stdin.write(script)
     }
 
-    public applyDiff(currText: string, diffResult: DiffEnum) {
+    public applyLiveText(currText: string) {
         if (this.hasStopped) return
-        switch (diffResult) {
-            case DiffEnum.NoChange:
-                // Do nothing
-                break
+        if (currText === this.prevText) return
 
-            case DiffEnum.ChangeRes:
-                let charsToAdd = currText
-                if (this.prevText === "") {
-                    this.typeText(charsToAdd)
-                } else {
-                    const commonPrefixLen = findCommonPrefixLen(currText, this.prevText)
-                    const charsToDelete = this.prevText.length - commonPrefixLen
-                    charsToAdd = charsToAdd.slice(commonPrefixLen)
-                    this.sendBackspaces(charsToDelete)
-                    this.typeText(charsToAdd)
-                }
-                this.prevText = currText
-
-                break
-
-            case DiffEnum.ChangeResAndClear:
-                this.reset()
-                break
+        let charsToAdd = currText
+        if (this.prevText === "") {
+            this.typeText(charsToAdd)
+        } else {
+            const commonPrefixLen = findCommonPrefixLen(currText, this.prevText)
+            const charsToDelete = this.prevText.length - commonPrefixLen
+            charsToAdd = currText.slice(commonPrefixLen)
+            this.sendBackspaces(charsToDelete)
+            this.typeText(charsToAdd)
         }
+        this.prevText = currText
     }
 
-    public calculateDiff(currText: string): DiffEnum {
-        if (currText === this.prevText) {
-            return DiffEnum.NoChange
-        }
-
-        if (currText.trim() === "") {
-            return DiffEnum.ChangeResAndClear
-        }
-
-        return DiffEnum.ChangeRes
+    public finalizeSegment() {
+        this.prevText = ""
     }
 
     public reset() {
@@ -143,12 +134,6 @@ export default class TypingController {
 
     public destroy() {
         this.dotool.kill("SIGTERM")
-    }
-
-    public calculateAndApplyDiff(str: string) {
-        const diffRes = this.calculateDiff(str)
-        if (diffRes == DiffEnum.ChangeResAndClear) log(`[SpeechUpdate] "${this.prevText}"`)
-        this.applyDiff(str, diffRes)
     }
 }
 

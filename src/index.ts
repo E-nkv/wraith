@@ -28,7 +28,6 @@ const daemon = new Daemon(
     // query param of /start and /toggle.
     parsedFlags.lang,
     parsedFlags.timeout,
-    parsedFlags.punctuation,
 )
 
 async function destroyDaemon() {
