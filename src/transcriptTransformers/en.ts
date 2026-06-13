@@ -82,13 +82,24 @@ function allowedCommands(streamEnabled: boolean): CommandDef[] {
     })
 }
 
-function allowedTextCommands(streamEnabled: boolean): CommandDef[] {
-    return allowedCommands(streamEnabled).filter((cmd) => cmd.kind !== "key")
+type CommandContext = {
+    allCommands: CommandDef[]
+    textCommands: CommandDef[]
+    streamEnabled: boolean
 }
 
-function findStandaloneKeyCommand(tokens: string[], streamEnabled: boolean): KeyCommandDef | null {
+function buildCommandContext(streamEnabled: boolean): CommandContext {
+    const allCommands = allowedCommands(streamEnabled)
+    return {
+        allCommands,
+        textCommands: allCommands.filter((cmd) => cmd.kind !== "key"),
+        streamEnabled,
+    }
+}
+
+function findStandaloneKeyCommand(tokens: string[], ctx: CommandContext): KeyCommandDef | null {
     if (tokens.length === 0) return null
-    for (const cmd of allowedCommands(streamEnabled)) {
+    for (const cmd of ctx.allCommands) {
         if (cmd.kind !== "key") continue
         if (wordsMatch(tokens, 0, cmd.words) && cmd.words.length === tokens.length) {
             return cmd
@@ -102,9 +113,9 @@ function wordsMatch(tokens: string[], start: number, words: string[]): boolean {
     return words.every((word, i) => tokens[start + i] === word)
 }
 
-function isCommandPrefix(tokens: string[], streamEnabled: boolean): boolean {
+function isCommandPrefix(tokens: string[], ctx: CommandContext): boolean {
     if (tokens.length === 0) return false
-    return allowedTextCommands(streamEnabled).some((cmd) => {
+    return ctx.textCommands.some((cmd) => {
         if (tokens.length >= cmd.words.length) return false
         return wordsMatch(tokens, 0, cmd.words.slice(0, tokens.length))
     })
@@ -113,10 +124,10 @@ function isCommandPrefix(tokens: string[], streamEnabled: boolean): boolean {
 function findLongestCommand(
     tokens: string[],
     start: number,
-    streamEnabled: boolean,
+    ctx: CommandContext,
 ): { cmd: CommandDef; len: number } | null {
     let best: { cmd: CommandDef; len: number } | null = null
-    for (const cmd of allowedTextCommands(streamEnabled)) {
+    for (const cmd of ctx.textCommands) {
         if (!wordsMatch(tokens, start, cmd.words)) continue
         if (!best || cmd.words.length > best.len) {
             best = { cmd, len: cmd.words.length }
@@ -131,8 +142,8 @@ function commandToRenderItem(cmd: CommandDef): RenderItem {
     return { kind: "punctuation", char: cmd.render.char, role: cmd.render.role }
 }
 
-function parseTokens(tokens: string[], streamEnabled: boolean): { items: RenderItem[]; deferred: string[] } {
-    const standaloneKey = findStandaloneKeyCommand(tokens, streamEnabled)
+function parseTokens(tokens: string[], ctx: CommandContext): { items: RenderItem[]; deferred: string[] } {
+    const standaloneKey = findStandaloneKeyCommand(tokens, ctx)
     if (standaloneKey) {
         return { items: [commandToRenderItem(standaloneKey)], deferred: [] }
     }
@@ -141,7 +152,7 @@ function parseTokens(tokens: string[], streamEnabled: boolean): { items: RenderI
     let i = 0
 
     while (i < tokens.length) {
-        const match = findLongestCommand(tokens, i, streamEnabled)
+        const match = findLongestCommand(tokens, i, ctx)
         if (match) {
             items.push(commandToRenderItem(match.cmd))
             i += match.len
@@ -149,7 +160,7 @@ function parseTokens(tokens: string[], streamEnabled: boolean): { items: RenderI
         }
 
         const remaining = tokens.slice(i)
-        if (streamEnabled && isCommandPrefix(remaining, streamEnabled)) {
+        if (ctx.streamEnabled && isCommandPrefix(remaining, ctx)) {
             return { items, deferred: remaining }
         }
 
@@ -240,6 +251,7 @@ function needsCrossSegmentSpace(text: string): boolean {
 }
 
 export function createEnglishTransformerSession(streamEnabled: boolean): TranscriptTransformerSession {
+    const commandCtx = buildCommandContext(streamEnabled)
     let capitalizeNext = true
     let lastRenderedText = ""
     let carriedDeferred: string[] = []
@@ -254,7 +266,7 @@ export function createEnglishTransformerSession(streamEnabled: boolean): Transcr
                 rawTokens = [...carriedDeferred, ...rawTokens]
             }
 
-            const { items, deferred } = parseTokens(rawTokens, streamEnabled)
+            const { items, deferred } = parseTokens(rawTokens, commandCtx)
             segmentEndDeferred = deferred
             lastSegmentItems = items
 
@@ -272,9 +284,7 @@ export function createEnglishTransformerSession(streamEnabled: boolean): Transcr
             const deferredForNext = segmentEndDeferred
             segmentEndDeferred = []
 
-            const keys = extractKeyCommands(lastSegmentItems)
-            const commands = keys
-
+            const commands = extractKeyCommands(lastSegmentItems)
             carriedDeferred = deferredForNext
             lastSegmentItems = []
 

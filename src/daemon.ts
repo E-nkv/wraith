@@ -11,6 +11,7 @@ import { createTranscriptTransformerSession } from "./transcriptTransformers/ind
 import { createNoopTransformerSession } from "./transcriptTransformers/noop.js"
 import type { TranscriptTransformerSession } from "./transcriptTransformers/types.js"
 import SpeechPipeline from "./speechPipeline.js"
+import { shouldAcceptSpeechEvent } from "./speechEventGate.js"
 import type { SpeechEvent } from "./types.js"
 
 export default class Daemon {
@@ -43,7 +44,7 @@ export default class Daemon {
         this.setupRoutes()
         this.notifier = new Notifier({ textNotifsEnabled, soundsNotifsEnabled })
         this.defaultLanguage = wsaLanguage ?? DEFAULT_LANGUAGE
-        this.stream = stream ?? false
+        this.stream = stream ?? true
         this.timeout = timeout ?? 0
     }
 
@@ -179,8 +180,9 @@ export default class Daemon {
 
     private async browserHealthMiddleware(req: Request, res: Response, next: NextFunction) {
         if (!this.isBrowserReady()) {
-            log("Browser not ready - initializing...")
-            throw new Error("Unexpected path. browser should be ready already")
+            log("Browser not ready")
+            res.status(503).send("Browser not ready")
+            return
         }
 
         try {
@@ -192,6 +194,7 @@ export default class Daemon {
                 await this.reinitBrowser()
                 next()
             } catch (e) {
+                log(`Browser reinitialization failed: ${e}`)
                 res.status(503).send("Browser reinitialization failed")
             }
         }
@@ -209,6 +212,8 @@ export default class Daemon {
     }
 
     private handleSpeechEvent(event: SpeechEvent) {
+        if (!shouldAcceptSpeechEvent(this.isWSAListening, this.typingController.hasStopped)) return
+
         this.speechPipeline.onEvent(event)
         if (event.kind === "text" && this.stream && this.timeout > 0) {
             this.resetSilenceTimer()
@@ -219,9 +224,10 @@ export default class Daemon {
         this.clearSilenceTimer()
         if (this.timeout > 0) {
             this.silenceTimer = setTimeout(() => {
-                if (this.isWSAListening) {
-                    this.stopTranscription("silence")
-                }
+                if (!this.isWSAListening) return
+                void this.stopTranscription("silence").catch((e) => {
+                    log(`Silence timer stop failed: ${e}`)
+                })
             }, this.timeout * 1000)
         }
     }
@@ -233,10 +239,15 @@ export default class Daemon {
         }
     }
     private async handleBrowserRecStop(payload: { reason: "silence" | "offline" | undefined }) {
-        if (this.isWSAListening) await this.stopTranscription(payload.reason ?? "intentional")
+        if (!this.isWSAListening) return
+        try {
+            await this.stopTranscription(payload.reason ?? "silence")
+        } catch (e) {
+            log(`Browser rec stop handling failed: ${e}`)
+        }
     }
 
-    //start spawns browser and server listener
+    // Start spawns browser and HTTP listener.
     public async start(port: number) {
         if (await isPortInUse(PORT)) {
             await this.notifier.notifyAlreadyRunning()
@@ -254,7 +265,7 @@ export default class Daemon {
             this.notifier.notifyError("Failed to initialize Voice Type daemon.")
             console.error(e)
 
-            process.exit(0)
+            process.exit(1)
         }
     }
 

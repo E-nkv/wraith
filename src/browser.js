@@ -1,7 +1,6 @@
-// WSA wrapper (Chrome context) — must remain .js with no imports (injected via page.evaluate).
-
-// recognitionResultsToEvents logic must live inside initWSA (Puppeteer only serializes the
-// evaluated function). Keep in sync with browserRecognition.js — see tests/browserRecognition.test.ts.
+// Injected into Chrome via page.evaluate — no imports. Helpers used by evaluated
+// functions must be nested inside them (Puppeteer only serializes the top-level export).
+// Event mapper: keep browserRecognition.js in sync (tests/browserRecognition.sync.test.ts).
 
 export function initWSA(stream, lang) {
     function recognitionResultsToEvents(stream, resultIndex, results) {

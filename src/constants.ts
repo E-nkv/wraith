@@ -1,5 +1,4 @@
-// Web Speech API (WSA) Language Constants
-// BCP47 language tags for the most common programming languages and dialects
+// BCP47 language tags for Web Speech API recognition.
 export const WSA_LANGUAGES = {
     EN_US: "en-US", // English, United States
     EN_GB: "en-GB", // English, United Kingdom

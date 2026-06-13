@@ -26,6 +26,7 @@ For install, usage, CLI flags, and HTTP routes see [`README.md`](README.md). For
 4. **dotool for input** — Wayland-friendly virtual keyboard; layout forced to US via `DOTOOL_XKB_LAYOUT=us`.
 5. **Web Speech API only** — Swapping STT means replacing `browser.js` + launch config, not a small patch.
 6. **Security** — Server binds localhost only, no auth. Do not expose on `0.0.0.0` without explicit review.
+7. **Puppeteer injection** — Code passed to `page.evaluate` is serialized as a single function; helpers must be **nested inside** that function, not at module scope in `browser.js`. Keep the WSA→event mapper in sync with `browserRecognition.js` (`tests/browserRecognition.sync.test.ts`).
 
 `src/browser.js` must remain **JavaScript** (injected into Chrome). Imports use `.js` extensions (`verbatimModuleSyntax`).
 
@@ -43,7 +44,7 @@ For install, usage, CLI flags, and HTTP routes see [`README.md`](README.md). For
 ### While implementing
 
 5. **User docs vs agent docs** — Install/usage → `README.md`. Deep dives → `INTERNALS.md`. This file is **stable agent policy**, not a changelog of every module.
-6. **Automated tests** — Run `bun test` (unit + integration). No dotool/Chrome required. Verify end-to-end behavior manually with `bun run dev` when needed.
+6. **Automated tests** — Run `bun test` (`tests/`; no Chrome or dotool required). Verify end-to-end behavior manually with `bun run dev` when needed.
 7. **Linux-only** — No macOS/Windows paths. System deps: `dotool`, Chrome/Chromium, `paplay`, D-Bus session bus.
 8. **Binary releases** — Production uses `install.sh` + tagged GitHub releases (`bun build --compile`). Keep `package.json` scripts in sync if build steps change.
 
@@ -69,4 +70,4 @@ Prettier defaults: **4-space indent**, **120** print width, **no semicolons**. S
 | `bun run build` | Bundle to `dist/` |
 | `bun build src/index.ts --compile --outfile build/voice-type` | Standalone binary |
 
-Source lives under `src/` — entry `index.ts`, core orchestration `daemon.ts`, WSA wrapper `browser.js`, typing `typingController.ts`, language-specific transcript logic under `transcriptTransformers/`.
+Source lives under `src/` — entry `index.ts`, orchestration `daemon.ts`, WSA `browser.js` + `browserRecognition.js`, `speechPipeline.ts`, `typingController.ts`, `dotoolSink.ts`, language-specific logic under `transcriptTransformers/`.

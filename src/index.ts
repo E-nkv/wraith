@@ -1,12 +1,15 @@
 import Daemon from "./daemon.js"
 import * as cli from "./cli.js"
 import { PORT } from "./constants.js"
+import { log } from "./utils.js"
 
 export { PORT } from "./constants.js"
 
 const flags = process.argv.slice(2)
 const parsedFlags = cli.parseFlags(flags)
-console.log("launch args:", JSON.stringify(parsedFlags))
+if (process.env.VOICE_TYPE_DEBUG) {
+    log("launch args:", JSON.stringify(parsedFlags))
+}
 if (parsedFlags.help) {
     cli.showHelp()
     process.exit(0)
@@ -43,4 +46,7 @@ if (parsedFlags.browserPath) {
 }
 process.env.BROWSER_TYPE = parsedFlags.browserType
 
-daemon.start(PORT).catch(console.error)
+daemon.start(PORT).catch((e) => {
+    console.error(e)
+    process.exit(1)
+})

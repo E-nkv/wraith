@@ -1,6 +1,5 @@
-// Pure WSA result → speech-event mapping. Tested via browserRecognition.test.ts.
-// Inlined inside initWSA in browser.js for Chrome injection (page.evaluate cannot bundle imports).
-// SYNC: must match the inner recognitionResultsToEvents in browser.js — see tests/browserRecognition.sync.test.ts.
+// WSA result → speech-event mapping (testable standalone copy of the nested mapper in browser.js).
+// Must stay in sync — enforced by tests/browserRecognition.sync.test.ts.
 
 /**
  * @param {boolean} stream

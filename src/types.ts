@@ -1,5 +1,5 @@
-import type { BrowserType } from "./browserLauncher"
-import type { WSA_LANGUAGES } from "./constants"
+import type { BrowserType } from "./browserLauncher.js"
+import type { WSA_LANGUAGES } from "./constants.js"
 
 export type Urgency = "low" | "normal" | "critical"
 

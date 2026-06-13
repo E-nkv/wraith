@@ -1,5 +1,5 @@
-import { TextNotifier } from "./textNotifier"
-import { SoundNotifier } from "./soundNotifier"
+import { TextNotifier } from "./textNotifier.js"
+import { SoundNotifier } from "./soundNotifier.js"
 
 /**
  * Main notifier that composes TextNotifier and SoundNotifier
