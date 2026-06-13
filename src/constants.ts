@@ -43,3 +43,5 @@ export const WSA_LANGUAGES = {
     RO_RO: "ro-RO", // Romanian, Romania
     HU_HU: "hu-HU", // Hungarian, Hungary
 } as const
+
+export const PORT = 3232

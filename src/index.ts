@@ -1,7 +1,8 @@
 import Daemon from "./daemon.js"
 import * as cli from "./cli.js"
+import { PORT } from "./constants.js"
 
-export const PORT = 3232
+export { PORT } from "./constants.js"
 
 const flags = process.argv.slice(2)
 const parsedFlags = cli.parseFlags(flags)

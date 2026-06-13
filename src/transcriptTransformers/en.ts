@@ -249,11 +249,12 @@ export function createEnglishTransformerSession(streamEnabled: boolean): Transcr
 
     return {
         transform(rawText: string): TransformResult {
-            const rawTokens = tokenize(rawText)
-            const tokens = [...carriedDeferred, ...rawTokens]
-            carriedDeferred = []
+            let rawTokens = tokenize(rawText)
+            if (carriedDeferred.length > 0) {
+                rawTokens = [...carriedDeferred, ...rawTokens]
+            }
 
-            const { items, deferred } = parseTokens(tokens, streamEnabled)
+            const { items, deferred } = parseTokens(rawTokens, streamEnabled)
             segmentEndDeferred = deferred
             lastSegmentItems = items
 

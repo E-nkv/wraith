@@ -5,11 +5,12 @@ import { isPortInUse, log } from "./utils.js"
 import express, { type Express, type Request, type Response, type NextFunction } from "express"
 import Notifier from "./notifier.js"
 import { launchBrowser } from "./browserLauncher.js"
-import { PORT } from "./index.js"
+import { PORT } from "./constants.js"
 import { DEFAULT_LANGUAGE, isValidLanguage, readLanguageQuery } from "./language.js"
 import { createTranscriptTransformerSession } from "./transcriptTransformers/index.js"
 import { createNoopTransformerSession } from "./transcriptTransformers/noop.js"
 import type { TranscriptTransformerSession } from "./transcriptTransformers/types.js"
+import SpeechPipeline from "./speechPipeline.js"
 import type { SpeechEvent } from "./types.js"
 
 export default class Daemon {
@@ -17,12 +18,16 @@ export default class Daemon {
     private stream: boolean
     private timeout: number
     private transcriptTransformer: TranscriptTransformerSession = createNoopTransformerSession()
+    private typingController: TypingController = new TypingController()
+    private speechPipeline: SpeechPipeline = new SpeechPipeline(
+        this.transcriptTransformer,
+        this.typingController,
+    )
     private browser: Browser | null = null
     private page: Page | null = null
     private isWSAListening: boolean = false
     private app: Express
 
-    private typingController: TypingController = new TypingController()
     private notifier: Notifier
     private stopCooldown: boolean = false
     private silenceTimer: NodeJS.Timeout | null = null
@@ -106,6 +111,7 @@ export default class Daemon {
         log(`Starting transcription in '${lang}'...`)
         this.transcriptTransformer = createTranscriptTransformerSession(lang, this.stream)
         this.transcriptTransformer.reset()
+        this.speechPipeline = new SpeechPipeline(this.transcriptTransformer, this.typingController)
         this.isWSAListening = true
         this.typingController.hasStopped = false
         this.notifier.notifyMicStart()
@@ -152,7 +158,7 @@ export default class Daemon {
         // Trigger corresponding notification
         if (reason === "intentional") {
             this.notifier.notifyMicStopIntentional()
-        } else if (reason == "silence") {
+        } else if (reason === "silence") {
             this.notifier.notifyMicStopSilence()
         } else if (reason === "offline") {
             this.notifier.notifyOffline()
@@ -203,18 +209,9 @@ export default class Daemon {
     }
 
     private handleSpeechEvent(event: SpeechEvent) {
-        if (event.kind === "text") {
-            const { text } = this.transcriptTransformer.transform(event.text)
-            this.typingController.applyLiveText(text)
-            if (this.stream && this.timeout > 0) {
-                this.resetSilenceTimer()
-            }
-        } else {
-            const commands = this.transcriptTransformer.onSegmentFinalized()
-            this.typingController.finalizeSegment()
-            for (const cmd of commands) {
-                if (cmd.kind === "key") this.typingController.sendKeyChord(cmd.chord)
-            }
+        this.speechPipeline.onEvent(event)
+        if (event.kind === "text" && this.stream && this.timeout > 0) {
+            this.resetSilenceTimer()
         }
     }
 
