@@ -16,7 +16,7 @@ Install the prerequisites below, then run:
 curl -sSL https://raw.githubusercontent.com/eriknovikov/voice-type/main/install.sh | bash
 ```
 
-This downloads the latest release, verifies its checksum, and installs `voice-type` to `/usr/local/bin` plus notification sounds to `/usr/local/share/voice-type/sounds`.
+This downloads the latest release, verifies its checksum, and installs `voice-type` to `/usr/local/bin`.
 
 Pin a version: `curl -sSL .../install.sh | bash -s -- --version v3.1.0`
 
@@ -26,7 +26,7 @@ Pin a version: `curl -sSL .../install.sh | bash -s -- --version v3.1.0`
 |---|---|
 | [dotool](https://git.sr.ht/~geb/dotool/) | Types text into any focused window |
 | `google-chrome` or `chromium` | Hosts the Web Speech API |
-| `paplay` | Sound notifications (only if using `--sound`) |
+| `paplay` | Sound notifications (only if using `--sound`). `canberra-gtk-play` is preferred when available. |
 
 ---
 
@@ -122,7 +122,8 @@ All endpoints are `GET` on `http://localhost:3232`:
 
 ```bash
 sudo rm /usr/local/bin/voice-type
-sudo rm -rf /usr/local/share/voice-type
+# If an older version created this directory, you can remove it:
+sudo rm -rf /usr/local/share/voice-type 2>/dev/null
 ```
 
 ---

@@ -73,7 +73,7 @@ These are plain HTTP — no auth, localhost only.
 
 Once a transcript comes back from the Web Speech API, Voice Type passes it to `dotool`, which replays it as keyboard input at the OS level. Because `dotool` operates via `/dev/uinput`, it works in any application — terminals, browsers, native apps — without needing clipboard access or application-specific integrations.
 
-`paplay` is used alongside this to play short audio cues (start, stop, error) from system sound files.
+Sound notifications play through a 2-tier resolver that searches for freedesktop sound theme names (`service-login`, `service-logout`, `dialog-error`) in the user's XDG data directories (`$XDG_DATA_HOME/sounds/` then `$XDG_DATA_DIRS/sounds/`). If `canberra-gtk-play` is on PATH it handles full theme lookup (including user overrides and theme inheritance); otherwise `paplay` plays the first found `.oga`/`.ogg`/`.wav` file. Neither available → silent no-op.
 
 ---
 
