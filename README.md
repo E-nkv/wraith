@@ -23,7 +23,7 @@ Pin a version: `curl -sSL .../install.sh | bash -s -- --version v3.1.0`
 ### Prerequisites
 
 | Package | Purpose |
-|---|---|
+| --- | --- |
 | [dotool](https://git.sr.ht/~geb/dotool/) | Types text into any focused window |
 | `google-chrome` or `chromium` | Hosts the Web Speech API |
 | `paplay` | Sound notifications (only if using `--sound`). `canberra-gtk-play` is preferred when available. |
@@ -41,16 +41,16 @@ Pin a version: `curl -sSL .../install.sh | bash -s -- --version v3.1.0`
 
 The Web Speech API doesn't insert punctuation. For **English (`en-*`)**, spoken punctuation and auto-capitalization are always active. Other languages type literally.
 
-| You say | You get |
-|---|---|
-| `comma` | `,` |
-| `period` | `.` |
-| `question mark` | `?` |
-| `exclamation mark` (or `exclamation point`) | `!` |
-| `semicolon` | `;` |
-| `double quote` (or `double quotes`) | `"` (with a space before it when it follows a word) |
-| `new line` (or `newline`) | Enter (inline, anywhere in the utterance) |
-| `control enter` | Ctrl+Enter (standalone key command; streaming only) |
+| You say                                     | You get                                             |
+| ------------------------------------------- | --------------------------------------------------- |
+| `comma`                                     | `,`                                                 |
+| `period`                                    | `.`                                                 |
+| `question mark`                             | `?`                                                 |
+| `exclamation mark` (or `exclamation point`) | `!`                                                 |
+| `semicolon`                                 | `;`                                                 |
+| `double quote` (or `double quotes`)         | `"` (with a space before it when it follows a word) |
+| `new line` (or `newline`)                   | Enter (inline, anywhere in the utterance)           |
+| `control enter`                             | Ctrl+Enter (standalone key command; streaming only) |
 
 Saying "hello comma world period" types `Hello, world.` — the first word of each sentence is capitalized automatically, including the first word after starting dictation and after a pause that follows a sentence end (a pause mid-sentence does not capitalize).
 
@@ -66,8 +66,10 @@ Matching is whole-word, so "commander" and "periodic" type literally. There is n
 
 # Options
 
+**Heads up:** CLI flags have moved to `~/.config/voice-type.jsonc`. The table below is outdated and will be replaced in a follow-up release; run `voice-type help` for the current config schema.
+
 | Flag | Description | Default |
-|---|---|---|
+| --- | --- | --- |
 | `--lang`, `-l` | Startup default language ([list](https://github.com/eriknovikov/voice-type/blob/main/src/constants.ts)). Override per key with `?lang=` (see [multiple languages](#dictate-in-multiple-languages)). | `en-US` |
 | `--browser_type` | `chrome` or `chromium` | `chrome` |
 | `--browser_path`, `-p` | Custom browser binary (e.g. `google-chrome-beta`) | — |
@@ -83,10 +85,10 @@ Matching is whole-word, so "commander" and "periodic" type literally. There is n
 
 Bind these in your desktop environment (GNOME: Settings → Keyboard → Custom Shortcuts).
 
-| Key | Action | Command |
-|---|---|---|
-| F10 | Start / stop the daemon | `sh -c "curl http://localhost:3232/exit 2>/dev/null \|\| voice-type"` |
-| F9 | Dictate (default language) | `curl http://localhost:3232/toggle` |
+| Key | Action                     | Command                                                               |
+| --- | -------------------------- | --------------------------------------------------------------------- |
+| F10 | Start / stop the daemon    | `sh -c "curl http://localhost:3232/exit 2>/dev/null \|\| voice-type"` |
+| F9  | Dictate (default language) | `curl http://localhost:3232/toggle`                                   |
 
 Press F10 once to start the daemon, then F9 to dictate. That's the whole flow.
 
@@ -94,11 +96,11 @@ Press F10 once to start the daemon, then F9 to dictate. That's the whole flow.
 
 Bind a separate key to each language by adding `?lang=` to the dictation command. Each key toggles dictation in its own language — no daemon restart, no flags to remember.
 
-| Key | Language | Command |
-|---|---|---|
-| F9 | English | `curl 'http://localhost:3232/toggle?lang=en-US'` |
-| F8 | Spanish | `curl 'http://localhost:3232/toggle?lang=es-ES'` |
-| F7 | French | `curl 'http://localhost:3232/toggle?lang=fr-FR'` |
+| Key | Language | Command                                          |
+| --- | -------- | ------------------------------------------------ |
+| F9  | English  | `curl 'http://localhost:3232/toggle?lang=en-US'` |
+| F8  | Spanish  | `curl 'http://localhost:3232/toggle?lang=es-ES'` |
+| F7  | French   | `curl 'http://localhost:3232/toggle?lang=fr-FR'` |
 
 Plain `curl http://localhost:3232/toggle` (no `?lang=`) uses the daemon's startup default. Set that default with `voice-type -l es-ES`. See the [full language list](https://github.com/eriknovikov/voice-type/blob/main/src/constants.ts).
 
@@ -106,13 +108,13 @@ Plain `curl http://localhost:3232/toggle` (no `?lang=`) uses the daemon's startu
 
 All endpoints are `GET` on `http://localhost:3232`:
 
-| Endpoint | Effect |
-|---|---|
+| Endpoint  | Effect                    |
+| --------- | ------------------------- |
 | `/health` | Returns `{"status":"ok"}` |
-| `/toggle` | Start or stop listening |
-| `/start` | Start listening |
-| `/stop` | Stop listening |
-| `/exit` | Shut down the daemon |
+| `/toggle` | Start or stop listening   |
+| `/start`  | Start listening           |
+| `/stop`   | Stop listening            |
+| `/exit`   | Shut down the daemon      |
 
 `/start` and `/toggle` accept `?lang=<bcp47>` (alias `?language=`) to set the recognition language for that request, falling back to the startup default (`--lang`) when omitted. Invalid values return `400` with an error notification and leave the current state unchanged. `/stop` and `/exit` ignore the param.
 

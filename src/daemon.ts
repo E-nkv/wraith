@@ -5,25 +5,19 @@ import { isPortInUse, log } from "./utils.js"
 import express, { type Express, type Request, type Response, type NextFunction } from "express"
 import Notifier from "./notifier.js"
 import { launchBrowser } from "./browserLauncher.js"
-import { PORT } from "./constants.js"
-import { DEFAULT_LANGUAGE, isValidLanguage, readLanguageQuery } from "./language.js"
+import { isValidLanguage, readLanguageQuery } from "./language.js"
 import { createTranscriptTransformerSession } from "./transcriptTransformers/index.js"
 import { createNoopTransformerSession } from "./transcriptTransformers/noop.js"
 import type { TranscriptTransformerSession } from "./transcriptTransformers/types.js"
 import SpeechPipeline from "./speechPipeline.js"
 import { shouldAcceptSpeechEvent } from "./speechEventGate.js"
-import type { SpeechEvent } from "./types.js"
+import type { SpeechEvent, VoiceTypeConfig } from "./types.js"
 
 export default class Daemon {
-    private defaultLanguage: string
-    private stream: boolean
-    private timeout: number
+    private readonly config: VoiceTypeConfig
     private transcriptTransformer: TranscriptTransformerSession = createNoopTransformerSession()
     private typingController: TypingController = new TypingController()
-    private speechPipeline: SpeechPipeline = new SpeechPipeline(
-        this.transcriptTransformer,
-        this.typingController,
-    )
+    private speechPipeline: SpeechPipeline = new SpeechPipeline(this.transcriptTransformer, this.typingController)
     private browser: Browser | null = null
     private page: Page | null = null
     private isWSAListening: boolean = false
@@ -33,19 +27,11 @@ export default class Daemon {
     private stopCooldown: boolean = false
     private silenceTimer: NodeJS.Timeout | null = null
 
-    constructor(
-        textNotifsEnabled: boolean,
-        soundsNotifsEnabled: boolean,
-        stream?: boolean,
-        wsaLanguage?: string,
-        timeout?: number,
-    ) {
+    constructor(config: VoiceTypeConfig) {
+        this.config = config
         this.app = express()
         this.setupRoutes()
-        this.notifier = new Notifier({ textNotifsEnabled, soundsNotifsEnabled })
-        this.defaultLanguage = wsaLanguage ?? DEFAULT_LANGUAGE
-        this.stream = stream ?? true
-        this.timeout = timeout ?? 0
+        this.notifier = new Notifier({ textNotifsEnabled: config.text, soundsNotifsEnabled: config.sound })
     }
 
     private setupRoutes() {
@@ -65,9 +51,6 @@ export default class Daemon {
 
         this.app.get("/toggle", this.browserHealthMiddleware.bind(this), async (req, res) => {
             if (this.isWSAListening) {
-                // Language arg on an already-listening toggle is intentionally dropped:
-                // a swap mid-session would require re-instantiating SpeechRecognition,
-                // which is deferred. Just stop (with cooldown + typing reset).
                 await this.stopTranscription("intentional", res)
             } else {
                 const lang = this.resolveAndValidateLanguage(req, res)
@@ -87,11 +70,10 @@ export default class Daemon {
     private resolveAndValidateLanguage(req: Request, res: Response): string | null {
         const requested = readLanguageQuery(req.query as Record<string, unknown>)
         if (requested === undefined) {
-            return this.defaultLanguage
+            return this.config.lang
         }
         if (!isValidLanguage(requested)) {
             log(`Invalid language param '${requested}'`)
-            // Fire-and-forget: notify + respond without mutating state
             void this.notifier.notifyError(`Invalid language: ${requested}`)
             res.status(400).send(`Invalid language: ${requested}`)
             return null
@@ -110,14 +92,14 @@ export default class Daemon {
         }
 
         log(`Starting transcription in '${lang}'...`)
-        this.transcriptTransformer = createTranscriptTransformerSession(lang, this.stream)
+        this.transcriptTransformer = createTranscriptTransformerSession(lang, this.config.stream)
         this.transcriptTransformer.reset()
         this.speechPipeline = new SpeechPipeline(this.transcriptTransformer, this.typingController)
         this.isWSAListening = true
         this.typingController.hasStopped = false
         this.notifier.notifyMicStart()
 
-        if (this.stream && this.timeout > 0) {
+        if (this.config.stream && this.config.timeout > 0) {
             this.resetSilenceTimer()
         }
 
@@ -156,7 +138,6 @@ export default class Daemon {
         this.typingController.hasStopped = true
         this.typingController.reset()
 
-        // Trigger corresponding notification
         if (reason === "intentional") {
             this.notifier.notifyMicStopIntentional()
         } else if (reason === "silence") {
@@ -201,34 +182,34 @@ export default class Daemon {
     }
 
     private async initBrowser() {
-        this.browser = await launchBrowser()
+        this.browser = await launchBrowser(this.config)
         this.page = await this.browser.newPage()
         this.page.on("console", (msg) => console.log("[BROWSER]", msg.text()))
 
         await this.page.goto("data:text/html,<html><body><h1>Voice Type</h1></body></html>")
         await this.page.exposeFunction("onSpeechEvent", this.handleSpeechEvent.bind(this))
         await this.page.exposeFunction("onBrowserRecStop", this.handleBrowserRecStop.bind(this))
-        await this.page.evaluate(browser.initWSA, this.stream, this.defaultLanguage)
+        await this.page.evaluate(browser.initWSA, this.config.stream, this.config.lang)
     }
 
     private handleSpeechEvent(event: SpeechEvent) {
         if (!shouldAcceptSpeechEvent(this.isWSAListening, this.typingController.hasStopped)) return
 
         this.speechPipeline.onEvent(event)
-        if (event.kind === "text" && this.stream && this.timeout > 0) {
+        if (event.kind === "text" && this.config.stream && this.config.timeout > 0) {
             this.resetSilenceTimer()
         }
     }
 
     private resetSilenceTimer() {
         this.clearSilenceTimer()
-        if (this.timeout > 0) {
+        if (this.config.timeout > 0) {
             this.silenceTimer = setTimeout(() => {
                 if (!this.isWSAListening) return
                 void this.stopTranscription("silence").catch((e) => {
                     log(`Silence timer stop failed: ${e}`)
                 })
-            }, this.timeout * 1000)
+            }, this.config.timeout * 1000)
         }
     }
 
@@ -247,17 +228,16 @@ export default class Daemon {
         }
     }
 
-    // Start spawns browser and HTTP listener.
-    public async start(port: number) {
-        if (await isPortInUse(PORT)) {
+    public async start() {
+        if (await isPortInUse(this.config.port)) {
             await this.notifier.notifyAlreadyRunning()
-            log("Daemon already running on port " + PORT)
+            log("Daemon already running on port " + this.config.port)
             process.exit(0)
         }
 
         try {
-            this.app.listen(port, "127.0.0.1", () => {
-                log(`server started on port: ${port}`)
+            this.app.listen(this.config.port, "127.0.0.1", () => {
+                log(`server started on port: ${this.config.port}`)
             })
             await this.initBrowser()
             this.notifier.notifyDaemonStart()
@@ -269,9 +249,6 @@ export default class Daemon {
         }
     }
 
-    /**
-     * Cleanup resources when shutting down the daemon
-     */
     public async destroy() {
         console.log("\n[DAEMON] Shutting down daemon...")
         this.clearSilenceTimer()

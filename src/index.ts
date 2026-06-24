@@ -1,52 +1,48 @@
 import Daemon from "./daemon.js"
-import * as cli from "./cli.js"
-import { PORT } from "./constants.js"
-import { log } from "./utils.js"
-
-export { PORT } from "./constants.js"
-
-const flags = process.argv.slice(2)
-const parsedFlags = cli.parseFlags(flags)
-if (process.env.VOICE_TYPE_DEBUG) {
-    log("launch args:", JSON.stringify(parsedFlags))
-}
-if (parsedFlags.help) {
-    cli.showHelp()
-    process.exit(0)
-}
-
-if (parsedFlags.detached) {
-    cli.respawnDetached(process.argv)
-    process.exit(0)
-}
+import { showHelp } from "./cli.js"
+import { loadConfig } from "./config.js"
 
 process.title = "voice-type"
 process.argv[0] = "voice-type"
 
-const daemon = new Daemon(
-    parsedFlags.textNotifs,
-    parsedFlags.soundNotifs,
-    parsedFlags.stream,
-    // The CLI --lang flag is the startup default; per-request language is
-    // resolved inside Daemon.setupRoutes() from the ?language= / ?lang=
-    // query param of /start and /toggle.
-    parsedFlags.lang,
-    parsedFlags.timeout,
-)
+const arg = process.argv[2]
 
-async function destroyDaemon() {
-    await daemon.destroy()
+if (arg === "help" || arg === "-h" || arg === "--help") {
+    showHelp()
     process.exit(0)
 }
-process.on("SIGTERM", destroyDaemon)
-process.on("SIGINT", destroyDaemon)
-
-if (parsedFlags.browserPath) {
-    process.env.BROWSER_PATH = parsedFlags.browserPath
+if (arg === "update") {
+    console.error("voice-type update is not yet implemented")
+    process.exit(1)
 }
-process.env.BROWSER_TYPE = parsedFlags.browserType
+if (arg === "shortcuts") {
+    if (process.argv[3] !== "--apply") {
+        showHelp()
+        process.exit(0)
+    }
+    console.error("voice-type shortcuts --apply is not yet implemented")
+    process.exit(1)
+}
+if (arg !== undefined) {
+    showHelp()
+    process.exit(0)
+}
 
-daemon.start(PORT).catch((e) => {
+async function main() {
+    const config = await loadConfig()
+    const daemon = new Daemon(config)
+
+    const destroyDaemon = async () => {
+        await daemon.destroy()
+        process.exit(0)
+    }
+    process.on("SIGTERM", destroyDaemon)
+    process.on("SIGINT", destroyDaemon)
+
+    await daemon.start()
+}
+
+main().catch((e) => {
     console.error(e)
     process.exit(1)
 })
