@@ -4,9 +4,9 @@ import { existsSync } from "fs"
 import { log } from "./logger.js"
 
 const EVENT_IDS: Record<string, string> = {
-    notifyStart: "service-login",
-    notifyStop: "service-logout",
+    notifyStart: "dialog-error",
     notifyOffline: "dialog-error",
+    notifyStop: "dialog-error",
     notifyError: "dialog-error",
 }
 
