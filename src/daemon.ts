@@ -37,7 +37,7 @@ export default class Daemon {
             this.speechPipeline = new SpeechPipeline(this.transcriptTransformer, this.typingController)
         }
         this.punctuationEnabled = config.punctuation
-        this.app = express()
+        this.app =./uninstall.sh express()
         this.setupRoutes()
         this.notifier = new Notifier({ textNotifsEnabled: config.text, soundsNotifsEnabled: config.sound })
     }
