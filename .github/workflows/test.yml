@@ -46,6 +46,45 @@ jobs:
           CGO_ENABLED: "0"
         run: go build -o /dev/null ./cmd/voice-type
 
+  install:
+    name: Installer smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: v5/go.mod
+
+      # /usr/local/bin is the only install location, and a copy earlier on PATH
+      # silently answers `voice-type` instead. Both halves are checked here: the
+      # binary lands in /usr/local/bin, and a shadow is reported rather than
+      # deleted unasked when there is no terminal to ask at.
+      - name: Installer smoke test
+        working-directory: v5
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\necho stale\n' > "$HOME/.local/bin/voice-type"
+          chmod +x "$HOME/.local/bin/voice-type"
+          export PATH="$HOME/.local/bin:$PATH"
+
+          ./install.sh --local 2>&1 | tee /tmp/install.log
+
+          test -x /usr/local/bin/voice-type
+          test "$(/usr/local/bin/voice-type version)" = "$(cat VERSION)"
+          grep -q "Another voice-type on your PATH" /tmp/install.log
+          test "$("$HOME/.local/bin/voice-type")" = "stale"
+
+          rm -f "$HOME/.local/bin/voice-type"
+          hash -r
+          test "$(command -v voice-type)" = "/usr/local/bin/voice-type"
+          test "$(voice-type version)" = "$(cat VERSION)"
+
+          ./uninstall.sh
+          test ! -e /usr/local/bin/voice-type
+
   shell:
     name: Installer syntax
     runs-on: ubuntu-latest

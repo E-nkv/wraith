@@ -35,10 +35,10 @@ prompt_yn() {
         return 0
     fi
     case "$_default" in
-        [Yy]*) _opts="Y/n" ;;
-        *) _opts="y/N" ;;
+        [Yy]*) _opts="Y/n"; _label="Y" ;;
+        *) _opts="y/N"; _label="N" ;;
     esac
-    printf '%s (%s) ' "$_msg" "$_opts" > /dev/tty
+    printf '%s (%s) [default %s] ' "$_msg" "$_opts" "$_label" > /dev/tty
     read -r _answer < /dev/tty || _answer=""
     [ -z "$_answer" ] && _answer="$_default"
     echo "$_answer"
@@ -113,6 +113,58 @@ remove_config() {
     esac
 }
 
+# Uninstalling has to clear the whole PATH, not just $PREFIX/bin: a leftover copy
+# in ~/.local/bin outranks it and would keep answering `voice-type` as if nothing
+# had been removed. Same resolution rules as the installer.
+remove_path_copies() {
+    _dir=$(cd "$PREFIX/bin" 2> /dev/null && pwd -P) || _dir="$PREFIX/bin"
+    _target="$_dir/$BINARY_NAME"
+    _copies=$(
+        printf '%s\n' "$PATH" | tr ':' '\n' | while IFS= read -r _entry; do
+            [ -n "$_entry" ] || _entry="."
+            _real=$(cd "$_entry" 2> /dev/null && pwd -P) || continue
+            if [ -f "$_real/$BINARY_NAME" ] && [ -x "$_real/$BINARY_NAME" ] &&
+                [ "$_real/$BINARY_NAME" != "$_target" ]; then
+                printf '%s\n' "$_real/$BINARY_NAME"
+            fi
+        done | sort -u
+    )
+    [ -n "$_copies" ] || return 0
+
+    while IFS= read -r _copy; do
+        [ -n "$_copy" ] || continue
+        if ! has_tty; then
+            log_warn "Another $BINARY_NAME left at $_copy. Remove it with: rm -f $_copy"
+            continue
+        fi
+        case "$(prompt_yn "Remove $_copy too?" "Y")" in
+            [Yy]*)
+                if [ -w "$(dirname "$_copy")" ]; then
+                    rm -f "$_copy"
+                else
+                    as_root rm -f "$_copy"
+                fi
+                log_info "Removed $_copy"
+                ;;
+            *) log_info "Kept $_copy" ;;
+        esac
+    done << EOF
+$_copies
+EOF
+}
+
+# The active vocabulary list is a single name voice-type wrote itself, so
+# it goes without asking. The directory stays unless it is now empty -- a log
+# may live beside it.
+remove_state() {
+    _dir="${XDG_STATE_HOME:-$HOME/.local/state}/voice-type"
+    _state="$_dir/workspace"
+    [ -e "$_state" ] || return 0
+    rm -f "$_state"
+    rmdir "$_dir" 2> /dev/null || true
+    log_info "Removed $_state"
+}
+
 # Audio that failed to transcribe is retained here rather than discarded, so it
 # may hold speech the user never got back as text. Never delete it unasked.
 remove_retained_audio() {
@@ -145,7 +197,9 @@ main() {
     load_config_port
     stop_daemon
     remove_binary
+    remove_path_copies
     remove_config
+    remove_state
     remove_retained_audio
     printf '\n' >&2
     log_info "Done. Your 'input' group membership was left in place."

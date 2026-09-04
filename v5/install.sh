@@ -18,6 +18,9 @@ PORT=3232
 
 MODE="prod"          # prod | version | local
 VERSION_TAG=""
+# The one install location. It is deliberately not configurable: the binary, the
+# config, and the port are shared across majors, and a second copy somewhere else
+# on PATH is what silently answers `voice-type` with an old build.
 PREFIX="/usr/local"
 API_KEY=""
 CONFIG_CREATED=0
@@ -79,10 +82,10 @@ prompt_yn() {
         return 0
     fi
     case "$_default" in
-        [Yy]*) _opts="Y/n" ;;
-        *) _opts="y/N" ;;
+        [Yy]*) _opts="Y/n"; _label="Y" ;;
+        *) _opts="y/N"; _label="N" ;;
     esac
-    printf '%s (%s) ' "$_msg" "$_opts" > /dev/tty
+    printf '%s (%s) [default %s] ' "$_msg" "$_opts" "$_label" > /dev/tty
     read -r _answer < /dev/tty || _answer=""
     [ -z "$_answer" ] && _answer="$_default"
     echo "$_answer"
@@ -173,6 +176,50 @@ install_binary_file() {
         *":$_target_dir:"*) ;;
         *) log_warn "$_target_dir is not in your PATH. Add it to run '$BINARY_NAME'." ;;
     esac
+}
+
+# The binary always goes to $PREFIX/bin, but a copy earlier on PATH -- typically
+# an old build in ~/.local/bin -- keeps answering `voice-type` and makes the
+# install look like it did nothing. Each directory is resolved with `pwd -P` so a
+# trailing slash or a symlink does not read as a second copy. With no terminal to
+# ask at, say so rather than delete unasked.
+clear_path_shadows() {
+    _dir=$(cd "$PREFIX/bin" 2> /dev/null && pwd -P) || return 0
+    _target="$_dir/$BINARY_NAME"
+    _copies=$(
+        printf '%s\n' "$PATH" | tr ':' '\n' | while IFS= read -r _entry; do
+            [ -n "$_entry" ] || _entry="."
+            _real=$(cd "$_entry" 2> /dev/null && pwd -P) || continue
+            if [ -f "$_real/$BINARY_NAME" ] && [ -x "$_real/$BINARY_NAME" ] &&
+                [ "$_real/$BINARY_NAME" != "$_target" ]; then
+                printf '%s\n' "$_real/$BINARY_NAME"
+            fi
+        done | sort -u
+    )
+    [ -n "$_copies" ] || return 0
+
+    while IFS= read -r _copy; do
+        [ -n "$_copy" ] || continue
+        log_warn "Another $BINARY_NAME on your PATH: $(link_path "$_copy")"
+        if ! has_tty; then
+            log_warn "It will keep answering '$BINARY_NAME'. Remove it with: rm -f $_copy"
+            continue
+        fi
+        case "$(prompt_yn "Remove it so $_target is the one that runs?" "Y")" in
+            [Yy]*)
+                if [ -w "$(dirname "$_copy")" ]; then
+                    rm -f "$_copy"
+                else
+                    as_root rm -f "$_copy"
+                fi
+                log_info "Removed $_copy"
+                ;;
+            *) log_warn "Kept $_copy -- it will keep answering '$BINARY_NAME'" ;;
+        esac
+    done << EOF
+$_copies
+EOF
+    log_info "Open shells may need 'hash -r' to pick up $_target."
 }
 
 build_local() {
@@ -283,16 +330,18 @@ ask_api_key() {
     fi
 }
 
-# Writes a config, offering to skip when one already exists. The safe default is
-# to keep it; declining the prompt explicitly replaces it without a backup.
+# Writes a config, asking before it touches one that already exists. The prompt
+# names the action it performs, so the default answer is the safe one: only an
+# explicit yes replaces the file, and it does so without a backup.
 write_config() {
     CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"
     CONFIG_FILE="$CONFIG_DIR/voice-type.jsonc"
     _config_action="Wrote"
 
     if [ -f "$CONFIG_FILE" ]; then
-        case "$(prompt_yn "Skip creating the existing config at $(link_path "$CONFIG_FILE")?" "Y")" in
-            [Yy]*)
+        case "$(prompt_yn "Replace the existing config at $(link_path "$CONFIG_FILE")?" "N")" in
+            [Yy]*) _config_action="Replaced" ;;
+            *)
                 chmod 600 "$CONFIG_FILE" || {
                     log_error "Could not restrict $CONFIG_FILE to mode 600."
                     exit 1
@@ -300,7 +349,6 @@ write_config() {
                 log_info "Keeping existing config at $(link_path "$CONFIG_FILE")"
                 return 0
                 ;;
-            *) _config_action="Replaced" ;;
         esac
     fi
 
@@ -319,10 +367,15 @@ write_config() {
     // Run `voice-type models` for choices, prices, and vocabulary support.
     "model": "gpt-4o-transcribe",
 
-    // Names and jargon the model would otherwise misspell. Keep this short.
-    "vocabulary": [],
+    // Names and jargon the model would otherwise misspell, one list per
+    // workspace. "general" rides along with every dictation; pick one of the
+    // rest with `voice-type vocab set <name>`. Keep them short.
+    "vocabulary": {
+        "general": []
+    },
 
-    // Hand edits take effect on the next dictation; voice-type never writes it.
+    // Hand edits take effect on the next dictation; voice-type never writes
+    // this file (a `vocab set` is recorded under ~/.local/state/voice-type).
 }
 EOF
     )
@@ -342,6 +395,9 @@ config_has_key() {
 }
 
 print_summary() {
+    _installed=$("$PREFIX/bin/$BINARY_NAME" version 2> /dev/null) || _installed="unknown version"
+    log_info "Installed $_installed at $(link_path "$PREFIX/bin/$BINARY_NAME")"
+
     if [ "$CONFIG_CREATED" = "1" ]; then
         log_info "Keyboard shortcuts, to set in your desktop environment:"
         log_info "  Dictate:            curl -s http://localhost:$PORT/toggle"
@@ -366,6 +422,7 @@ main() {
     else
         download_release
     fi
+    clear_path_shadows
 
     write_config
     print_summary

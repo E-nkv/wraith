@@ -100,6 +100,33 @@ jobs:
           sh -n ../uninstall.sh
           shellcheck -s sh install.sh uninstall.sh ../install.sh ../uninstall.sh
 
+      # /usr/local/bin is the only install location, and a copy earlier on PATH
+      # silently answers `voice-type` instead. Both halves are checked here: the
+      # binary lands in /usr/local/bin, and a shadow is reported rather than
+      # deleted unasked when there is no terminal to ask at.
+      - name: Installer smoke test
+        working-directory: v5
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\necho stale\n' > "$HOME/.local/bin/voice-type"
+          chmod +x "$HOME/.local/bin/voice-type"
+          export PATH="$HOME/.local/bin:$PATH"
+
+          ./install.sh --local 2>&1 | tee /tmp/install.log
+
+          test -x /usr/local/bin/voice-type
+          test "$(/usr/local/bin/voice-type version)" = "$(cat VERSION)"
+          grep -q "Another voice-type on your PATH" /tmp/install.log
+          test "$("$HOME/.local/bin/voice-type")" = "stale"
+
+          rm -f "$HOME/.local/bin/voice-type"
+          hash -r
+          test "$(command -v voice-type)" = "/usr/local/bin/voice-type"
+          test "$(voice-type version)" = "$(cat VERSION)"
+
+          ./uninstall.sh
+          test ! -e /usr/local/bin/voice-type
+
   release:
     needs: [check-version, validate]
     if: needs.check-version.outputs.should_release == 'true'

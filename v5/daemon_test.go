@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -606,7 +607,7 @@ func TestVocabularyEchoRetainsAudioAndSkipsOutput(t *testing.T) {
 	kb := newFakeKeyboard()
 	samples := concat(speech(0.5, 2500), speech(2, 5000))
 	cfg := configDefaults()
-	cfg.Vocabulary = vocabulary
+	cfg.Vocabulary = vocabLists{{generalWorkspace, vocabulary}}
 	d := newDaemon(cfg, &resources{
 		Recorder: &fakeRecorder{samples: samples},
 		Typer:    &Typer{kb: kb},
@@ -651,7 +652,7 @@ func TestVocabularyInLegitimateTranscriptIsOutput(t *testing.T) {
 
 	kb := newFakeKeyboard()
 	cfg := configDefaults()
-	cfg.Vocabulary = []string{"Numbero"}
+	cfg.Vocabulary = vocabLists{{generalWorkspace, []string{"Numbero"}}}
 	d := newDaemon(cfg, &resources{
 		Recorder: &fakeRecorder{samples: concat(speech(0.5, 2500), speech(2, 5000))},
 		Typer:    &Typer{kb: kb},
@@ -667,4 +668,54 @@ func TestVocabularyInLegitimateTranscriptIsOutput(t *testing.T) {
 	if len(kb.events) == 0 {
 		t.Fatal("legitimate transcript was not output")
 	}
+}
+
+// A `voice-type vocab set` runs in a second process and only writes the state
+// file, so the daemon has to pick it up on the next dictation the same way it
+// picks up a hand edit.
+func TestDaemonPicksUpWorkspaceSetBetweenDictations(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	config := `{
+    "vocabulary": {
+        "general":    ["Erik Novikov"],
+        "numbero":    ["Keyloop", "Audaris"],
+        "voice-type": ["dotool"]
+    }
+}`
+	if err := os.WriteFile(filepath.Join(home, "voice-type.jsonc"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspaceSave("numbero"); err != nil {
+		t.Fatal(err)
+	}
+
+	d := newDaemon(configLoad(), &resources{Recorder: &fakeRecorder{}})
+	assumeOnline(d)
+	if got := d.stt.vocabulary; !reflect.DeepEqual(got, []string{"Erik Novikov", "Keyloop", "Audaris"}) {
+		t.Fatalf("started with vocabulary %q", got)
+	}
+
+	if err := workspaceSave("voice-type"); err != nil {
+		t.Fatal(err)
+	}
+	if status, message := d.startSession(); status != http.StatusOK {
+		t.Fatalf("start after set = %d/%q", status, message)
+	}
+	if got := d.stt.vocabulary; !reflect.DeepEqual(got, []string{"Erik Novikov", "dotool"}) {
+		t.Errorf("after set, vocabulary = %q", got)
+	}
+
+	health := httptest.NewRecorder()
+	d.routes().ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+	var body map[string]any
+	if err := json.Unmarshal(health.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["workspace"] != "voice-type" || body["vocabulary"] != float64(2) {
+		t.Errorf("health = %#v", body)
+	}
+	d.stopSession()
 }
